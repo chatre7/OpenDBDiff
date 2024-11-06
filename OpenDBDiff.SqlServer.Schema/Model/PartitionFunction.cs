@@ -2,6 +2,7 @@
 using OpenDBDiff.Abstractions.Schema.Model;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -63,10 +64,63 @@ namespace OpenDBDiff.SqlServer.Schema.Model
             return IS_NUMERIC;
         }
 
+        //public override string ToSql()
+        //{
+        //    string sqltype = Type;
+
+        //    if (Type.Equals("binary") || Type.Equals("varbinary") || Type.Equals("varchar") || Type.Equals("char") || Type.Equals("nchar") || Type.Equals("nvarchar"))
+        //    {
+        //        if (Type.Equals("nchar") || Type.Equals("nvarchar"))
+        //            sqltype += " (" + (Size / 2).ToString(CultureInfo.InvariantCulture) + ")";
+        //        else
+        //            sqltype += " (" + Size.ToString(CultureInfo.InvariantCulture) + ")";
+        //    }
+        //    if (Type.Equals("numeric") || Type.Equals("decimal")) sqltype += " (" + Precision.ToString(CultureInfo.InvariantCulture) + "," + Scale.ToString(CultureInfo.InvariantCulture) + ")";
+        //    if (((Database)Parent).Info.Version >= DatabaseInfo.SQLServerVersion.SQLServer2008)
+        //    {
+        //        if (Type.Equals("datetime2") || Type.Equals("datetimeoffset") || Type.Equals("time")) sqltype += "(" + Scale.ToString(CultureInfo.InvariantCulture) + ")";
+        //    }
+
+        //    string sql = "CREATE PARTITION FUNCTION [" + Name + "](" + sqltype + ") AS RANGE\r\n ";
+        //    if (IsBoundaryRight)
+        //        sql += "RIGHT";
+        //    else
+        //        sql += "LEFT";
+        //    sql += " FOR VALUES (";
+
+        //    string sqlvalues = "";
+        //    int valueType = ValueItem(Type);
+
+        //    if (valueType == IS_STRING)
+        //        Values.ForEach(item => { sqlvalues += "N'" + item + "',"; });
+        //    else
+        //        if (valueType == IS_DATE)
+        //    {
+
+        //        Values.ForEach(item => { Debug.Print(item); });
+        //        //Values.ForEach(item => { sqlvalues += "'" + DateTime.Parse(item).ToString("yyyy/MM/dd HH:mm:ss.fff") + "',"; });
+        //        Values.ForEach(item => { sqlvalues += "'" + Convert.ToDateTime(item).ToString("yyyy/MM/dd HH:mm:ss.fff") + "',"; });
+        //    }
+
+        //    else
+        //            if (valueType == IS_UNIQUE)
+        //    {
+        //        Values.ForEach(item => { sqlvalues += "'{" + item + "}',"; });
+        //    }
+
+        //    else
+        //                if (valueType == IS_NUMERIC)
+        //        Values.ForEach(item => { sqlvalues += item.Replace(",", ".") + ","; });
+        //    else
+        //        Values.ForEach(item => { sqlvalues += item + ","; });
+        //    sql += sqlvalues.Substring(0, sqlvalues.Length - 1) + ")";
+
+        //    return sql + "\r\nGO\r\n";
+        //}
+
         public override string ToSql()
         {
             string sqltype = Type;
-
             if (Type.Equals("binary") || Type.Equals("varbinary") || Type.Equals("varchar") || Type.Equals("char") || Type.Equals("nchar") || Type.Equals("nvarchar"))
             {
                 if (Type.Equals("nchar") || Type.Equals("nvarchar"))
@@ -79,32 +133,47 @@ namespace OpenDBDiff.SqlServer.Schema.Model
             {
                 if (Type.Equals("datetime2") || Type.Equals("datetimeoffset") || Type.Equals("time")) sqltype += "(" + Scale.ToString(CultureInfo.InvariantCulture) + ")";
             }
-
             string sql = "CREATE PARTITION FUNCTION [" + Name + "](" + sqltype + ") AS RANGE\r\n ";
             if (IsBoundaryRight)
                 sql += "RIGHT";
             else
                 sql += "LEFT";
             sql += " FOR VALUES (";
-
             string sqlvalues = "";
             int valueType = ValueItem(Type);
-
             if (valueType == IS_STRING)
                 Values.ForEach(item => { sqlvalues += "N'" + item + "',"; });
-            else
-                if (valueType == IS_DATE)
-                Values.ForEach(item => { sqlvalues += "'" + DateTime.Parse(item).ToString("yyyyMMdd HH:mm:ss.fff") + "',"; });
-            else
-                    if (valueType == IS_UNIQUE)
+            else if (valueType == IS_DATE)
+            {
+                Values.ForEach(item => {
+                    // Remove any single quotes from the input string
+                    string cleanItem = item.Trim('\'');
+
+                    // Parse the date using the exact format we expect
+                    if (DateTime.TryParseExact(cleanItem,
+                                             "yyyy/MM/dd HH:mm:ss.fff",
+                                             CultureInfo.InvariantCulture,
+                                             DateTimeStyles.None,
+                                             out DateTime parsedDate))
+                    {
+                        sqlvalues += $"'{parsedDate:yyyy-MM-dd HH:mm:ss.fff}',";
+                    }
+                    else
+                    {
+                        throw new FormatException($"Unable to parse date string: {item}. Expected format: yyyy/MM/dd HH:mm:ss.fff");
+                    }
+                });
+            }
+            else if (valueType == IS_UNIQUE)
+            {
                 Values.ForEach(item => { sqlvalues += "'{" + item + "}',"; });
-            else
-                        if (valueType == IS_NUMERIC)
+            }
+            else if (valueType == IS_NUMERIC)
                 Values.ForEach(item => { sqlvalues += item.Replace(",", ".") + ","; });
             else
                 Values.ForEach(item => { sqlvalues += item + ","; });
-            sql += sqlvalues.Substring(0, sqlvalues.Length - 1) + ")";
 
+            sql += sqlvalues.Substring(0, sqlvalues.Length - 1) + ")";
             return sql + "\r\nGO\r\n";
         }
 
